@@ -12,6 +12,19 @@ const int RED_LED = 2;
 const int GREEN_LED = 3;
 const int BLUE_LED = 4;
 
+namespace FlourishWiFi {
+	struct Network {
+		int32_t rssi;
+		uint8_t encryptionType;
+		const char* ssid;
+	};
+
+	struct NetworkList {
+		int8_t size;
+		Network* networks;
+	};
+}
+
 BLEService batteryService("180F");
 BLEByteCharacteristic batteryPercentage("2A19", BLERead);
 
@@ -26,6 +39,7 @@ BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 // TODO: create proper UUID https://devzone.nordicsemi.com/guides/short-range-guides/b/bluetooth-low-energy/posts/ble-services-a-beginners-tutorial
 BLEService wifiScannerService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
 BLEByteCharacteristic wifiScannerScanState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
+BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::Network));
 
 BLEService wifiConfiguratorService("00000000-dabd-4a32-8e63-7631272ab6e3");
 BLEByteCharacteristic wifiConfigState("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate);
@@ -51,6 +65,7 @@ void startWifi() {
 	wiFiDrv.wifiDriverDeinit();
 	wiFiDrv.wifiDriverInit();
 	status = WL_IDLE_STATUS;
+	delay(100);
 	Serial.println("WiFi initialized");
 }
 
@@ -70,43 +85,16 @@ void startBle() {
 		while (1);
 	}
 
-	Serial.println("BLE Initialized");
-
 	// TODO: user configurable name?
 	BLE.setLocalName("Flourish Device");
 	BLE.setDeviceName("Flourish Device");
-	BLE.setAdvertisedService(wifiScannerService);
 
-	// setup BLE services and characteristics
-	wifiScannerService.addCharacteristic(wifiScannerScanState);
 	BLE.addService(wifiScannerService);
-
-	wifiConfiguratorService.addCharacteristic(wifiConfigState);
 	BLE.addService(wifiConfiguratorService);
-
-	batteryService.addCharacteristic(batteryPercentage);
 	BLE.addService(batteryService);
-
-	deviceInformationService.addCharacteristic(deviceManufacturerName);
-	deviceInformationService.addCharacteristic(deviceModelNumber);
-	deviceInformationService.addCharacteristic(deviceSerialNumber);
-	deviceInformationService.addCharacteristic(deviceHardwareRevision);
-	deviceInformationService.addCharacteristic(deviceFirmwareRevision);
-
-	deviceManufacturerName.writeValue("Flourish");
-	deviceModelNumber.writeValue(model);
-	deviceSerialNumber.writeValue(serialNumber);
-	deviceHardwareRevision.writeValue(hardwareRevision);
-	deviceFirmwareRevision.writeValue(firmwareRevision);
 	BLE.addService(deviceInformationService);
-
-	// setup event handlers
-	BLE.setEventHandler(BLEConnected, onBLEConnected);
-	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
-
-	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
-
 	BLE.advertise();
+	Serial.println("BLE Initialized");
 }
 
 namespace WIFI_SCANNER_STATE {
@@ -174,7 +162,37 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
+	BLE.setAdvertisedService(wifiScannerService);
+
+	// setup characteristics
+	wifiScannerService.addCharacteristic(wifiScannerScanState);
+	wifiScannerService.addCharacteristic(wifiScannerAPList);
+
+	wifiConfiguratorService.addCharacteristic(wifiConfigState);
+
+	batteryService.addCharacteristic(batteryPercentage);
+
+	deviceInformationService.addCharacteristic(deviceManufacturerName);
+	deviceInformationService.addCharacteristic(deviceModelNumber);
+	deviceInformationService.addCharacteristic(deviceSerialNumber);
+	deviceInformationService.addCharacteristic(deviceHardwareRevision);
+	deviceInformationService.addCharacteristic(deviceFirmwareRevision);
+
+	deviceManufacturerName.writeValue("Flourish");
+	deviceModelNumber.writeValue(model);
+	deviceSerialNumber.writeValue(serialNumber);
+	deviceHardwareRevision.writeValue(hardwareRevision);
+	deviceFirmwareRevision.writeValue(firmwareRevision);
+
+	// setup event handlers
+	BLE.setEventHandler(BLEConnected, onBLEConnected);
+	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
+
+	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
+
 	startBle();
+
+	Serial.println("Setup complete");
 }
 
 std::map<int, String> encryptionTypeMap = {
@@ -185,15 +203,10 @@ std::map<int, String> encryptionTypeMap = {
 	{ ENC_TYPE_AUTO, "Auto" }
 };
 
-struct Network {
-	int32_t rssi;
-	uint8_t encryptionType;
-	const char* ssid;
-};
 
-void getNetworks() {
+FlourishWiFi::NetworkList getNetworks() {
 	Serial.println("Scanning networks");
-	int numSsid = WiFi.scanNetworks();
+	int8_t numSsid = WiFi.scanNetworks();
 
 	if (numSsid == -1) {
 		Serial.println("Couldn't get WiFi connection");
@@ -202,17 +215,25 @@ void getNetworks() {
 
 	Serial.println("Number of available networks: " + String(numSsid));
 
+	FlourishWiFi::Network* networks = new FlourishWiFi::Network[numSsid];
+	// Network* networks = (Network*) malloc(sizeof( Network ) * numSsid);
 	for (size_t i = 0; i < numSsid; i++)
 	{
-		Serial.println("Network " + String(i) + ": " + String(WiFi.SSID(i)));
-		Serial.println("Signal: " + String(WiFi.RSSI(i)) + " dBm");
-		Serial.println("Encryption: " + encryptionTypeMap[WiFi.encryptionType(i)]);
-		Network network = {
+		networks[i] = {
 			WiFi.RSSI(i),
 			WiFi.encryptionType(i),
 			WiFi.SSID(i)
 		};
+
+		Serial.println("Network " + String(i) + ": " + String(networks[i].ssid));
+		Serial.println("Signal: " + String(networks[i].rssi) + " dBm");
+		Serial.println("Encryption: " + encryptionTypeMap[networks[i].encryptionType]);
 	}
+
+	return FlourishWiFi::NetworkList {
+		numSsid,
+		networks
+	};
 }
 
 void scanner() {
@@ -225,17 +246,29 @@ void scanner() {
 					Serial.println("IDLE");
 					delay(1000);
 					break;
-				case WIFI_SCANNER_STATE::SCAN:
+				case WIFI_SCANNER_STATE::SCAN: {
 					Serial.println("Starting WiFi scan");
 					startWifi();
 
-					getNetworks();
+					FlourishWiFi::NetworkList networkInfo = getNetworks();
 
+					// restart ble and send values
 					startBle();
-
 					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
-					break;
 
+		 			Serial.println("Found " + String(networkInfo.size) + " networks");
+					for (size_t i = 0; i < networkInfo.size; i++)
+					{
+						char bytes[sizeof(networkInfo.networks[i])];
+						memcpy(bytes, &networkInfo.networks[i], sizeof(networkInfo.networks[i]));
+						Serial.println("Writing " + String(sizeof(bytes)) + " bytes");
+						wifiScannerAPList.writeValue(bytes, sizeof(bytes));
+					}
+
+					delete[] networkInfo.networks;
+					Serial.println("Scan complete");
+					break;
+				}
 				default:
 					break;
 			}
