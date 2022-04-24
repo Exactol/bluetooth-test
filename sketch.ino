@@ -1,10 +1,16 @@
+#include <WiFiNINA.h>
 #include <ArduinoBLE.h>
-// #include <
+#include <map>
+#include "utility/wifi_drv.h"
 
 const String model = "Flourish Device";
 const String serialNumber = "abcde";
 const String hardwareRevision = "0.1";
 const String firmwareRevision = "0.1";
+
+const int RED_LED = 2;
+const int GREEN_LED = 3;
+const int BLUE_LED = 4;
 
 BLEService batteryService("180F");
 BLEByteCharacteristic batteryPercentage("2A19", BLERead);
@@ -28,65 +34,32 @@ BLEStringCharacteristic wifiConfigPassword("00000003-dabd-4a32-8e63-7631272ab6e3
 // BLEByteCharacteristic wifiConfigSecurity("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 16);
 // BLEByteCharacteristic wifiSSDCharacteristic("", BLEWrite);
 
-namespace WIFI_SCANNER_STATE {
-	enum {
-		IDLE = 1,
-		SCAN = 2,
-		SCANNING = 4,
-		SCANNED = 8,
-		ERROR = 16
-	};
+bool wifiMode = false;
+int status = WL_IDLE_STATUS;
+
+void startWifi() {
+	wifiMode = true;
+
+	// stop ble
+	Serial.println("Stopping BLE");
+	BLE.stopAdvertise();
+	BLE.stopScan();
+	BLE.end();
+
+	Serial.println("Initializing WiFi");
+	// start WiFi
+	wiFiDrv.wifiDriverDeinit();
+	wiFiDrv.wifiDriverInit();
+	status = WL_IDLE_STATUS;
+	Serial.println("WiFi initialized");
 }
 
-namespace WIFI_SCANNER_COMMANDS {
-	enum {
-		SCAN = 2,
-	};
-}
+void startBle() {
+	wifiMode = false;
 
-namespace WIFI_CONFIG_STATE {
-	enum {
-		IDLE = 1,
-		SAVE = 2,
-		SAVING = 4,
-		SAVED = 8,
-		JOIN = 16,
-		JOINING = 32,
-		JOINED = 64,
-		ERROR = 128
-	};
-}
-
-// namespace FLOURISH_DEVICE_STATE {
-// 	enum {
-// 		IDLE = 1,
-// 		COMMISSIONING = 2,
-// 		COMMISSIONED = 4,
-// 		ERROR = 8
-// 	};
-// }
-
-void onBLEConnected(BLEDevice central) {
-	Serial.print("Connected event, central: ");
-	Serial.println(central.address());
-
-	wifiScannerScanState.writeValue(WIFI_CONFIG_STATE::IDLE);
-	wifiConfigState.writeValue(WIFI_SCANNER_STATE::IDLE);
-
-	// TODO:
-	batteryPercentage.writeValue(80);
-}
-
-void onBLEDisconnected(BLEDevice central) {
-	Serial.print("Disconnected event, central: ");
-	Serial.println(central.address());
-	// TODO: cleanup
-}
-
-void setup()
-{
-	Serial.begin(9600);
-	while (!Serial);
+	// end wifi
+	Serial.println("Stopping WiFi");
+	WiFi.end();
 
 	Serial.println("Initializing BLE");
 
@@ -136,8 +109,114 @@ void setup()
 	BLE.advertise();
 }
 
+namespace WIFI_SCANNER_STATE {
+	enum {
+		IDLE = 1,
+		SCAN = 2,
+		SCANNING = 4,
+		SCANNED = 8,
+		ERROR = 16
+	};
+}
+
+namespace WIFI_SCANNER_COMMANDS {
+	enum {
+		SCAN = 2,
+	};
+}
+
+namespace WIFI_CONFIG_STATE {
+	enum {
+		IDLE = 1,
+		SAVE = 2,
+		SAVING = 4,
+		SAVED = 8,
+		JOIN = 16,
+		JOINING = 32,
+		JOINED = 64,
+		ERROR = 128
+	};
+}
+
+// namespace FLOURISH_DEVICE_STATE {
+// 	enum {
+// 		IDLE = 1,
+// 		COMMISSIONING = 2,
+// 		COMMISSIONED = 4,
+// 		ERROR = 8
+// 	};
+// }
+
+void onBLEConnected(BLEDevice central) {
+	Serial.print("Connected event, central: ");
+	Serial.println(central.address());
+
+	wifiScannerScanState.writeValue(WIFI_CONFIG_STATE::IDLE);
+	wifiConfigState.writeValue(WIFI_SCANNER_STATE::IDLE);
+
+	batteryPercentage.writeValue(80);
+	pinMode(BLUE_LED, HIGH);
+}
+
+void onBLEDisconnected(BLEDevice central) {
+	Serial.print("Disconnected event, central: ");
+	Serial.println(central.address());
+	// TODO: cleanup
+}
+
+void setup()
+{
+	Serial.begin(9600);
+	while (!Serial);
+
+	// initialize pins
+	pinMode(RED_LED, OUTPUT);
+	pinMode(GREEN_LED, OUTPUT);
+	pinMode(BLUE_LED, OUTPUT);
+
+	startBle();
+}
+
+std::map<int, String> encryptionTypeMap = {
+	{ ENC_TYPE_WEP, "WEP" },
+	{ ENC_TYPE_TKIP, "WPA" },
+	{ ENC_TYPE_CCMP, "WPA2" },
+	{ ENC_TYPE_NONE, "None" },
+	{ ENC_TYPE_AUTO, "Auto" }
+};
+
+struct Network {
+	int32_t rssi;
+	uint8_t encryptionType;
+	const char* ssid;
+};
+
+void getNetworks() {
+	Serial.println("Scanning networks");
+	int numSsid = WiFi.scanNetworks();
+
+	if (numSsid == -1) {
+		Serial.println("Couldn't get WiFi connection");
+		// TODO: raise error
+	}
+
+	Serial.println("Number of available networks: " + String(numSsid));
+
+	for (size_t i = 0; i < numSsid; i++)
+	{
+		Serial.println("Network " + String(i) + ": " + String(WiFi.SSID(i)));
+		Serial.println("Signal: " + String(WiFi.RSSI(i)) + " dBm");
+		Serial.println("Encryption: " + encryptionTypeMap[WiFi.encryptionType(i)]);
+		Network network = {
+			WiFi.RSSI(i),
+			WiFi.encryptionType(i),
+			WiFi.SSID(i)
+		};
+	}
+}
+
 void scanner() {
-	while (wifiScannerScanState.value() != WIFI_SCANNER_STATE::SCANNED) {
+	// while (wifiScannerScanState.value() != WIFI_SCANNER_STATE::SCANNED) {
 		if (wifiScannerScanState.written()) {
 			Serial.println("Written" + String(wifiScannerScanState.value()));
 			switch (wifiScannerScanState.value())
@@ -147,46 +226,55 @@ void scanner() {
 					delay(1000);
 					break;
 				case WIFI_SCANNER_STATE::SCAN:
-					Serial.println("SAVE");
-					delay(1000);
+					Serial.println("Starting WiFi scan");
+					startWifi();
+
+					getNetworks();
+
+					startBle();
+
+					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
 					break;
 
 				default:
 					break;
 			}
 		}
-	}
+	// }
 }
 
-void configurator() {
-	while (wifiConfigState.value() != WIFI_CONFIG_STATE::JOINED) {
-		if (wifiConfigState.written()) {
-			Serial.println("WiFi Config Written " + String(wifiConfigState.value()));
-			switch (wifiConfigState.value())
-			{
-				case WIFI_CONFIG_STATE::IDLE:
-					Serial.println("IDLE");
-					delay(1000);
-					break;
-				case WIFI_CONFIG_STATE::JOIN:
-					Serial.println("JOIN");
+// void configurator() {
+// 	while (wifiConfigState.value() != WIFI_CONFIG_STATE::JOINED) {
+// 		if (wifiConfigState.written()) {
+// 			Serial.println("WiFi Config Written " + String(wifiConfigState.value()));
+// 			switch (wifiConfigState.value())
+// 			{
+// 				case WIFI_CONFIG_STATE::IDLE:
+// 					Serial.println("IDLE");
+// 					delay(1000);
+// 					break;
+// 				case WIFI_CONFIG_STATE::JOIN:
+// 					Serial.println("JOIN");
 
-					delay(1000);
-					break;
+// 					delay(1000);
+// 					break;
 
-				default:
-					break;
-			}
-		}
-	}
-}
+// 				default:
+// 					break;
+// 			}
+// 		}
+// 	}
+// }
 
 void loop()
 {
 	BLEDevice central = BLE.central();
 
+	digitalWrite(BLUE_LED, HIGH);
+
 	if (central) {
 		while (central.connected()) {
+			scanner();
 			// if (wifiScannerScanState.written()) {
 			// 	Serial.println("Written" + String(wifiScannerScanState.value()));
 			// 	switch (wifiScannerScanState.value())
@@ -207,5 +295,7 @@ void loop()
 		}
 	}
 
-	delay(1000);
+	delay(500);
+	digitalWrite(BLUE_LED, LOW);
+	delay(500);
 }
