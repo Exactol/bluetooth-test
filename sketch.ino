@@ -15,13 +15,19 @@ const int BLUE_LED = 4;
 namespace FlourishWiFi {
 	struct Network {
 		int32_t rssi;
+		char ssid[32]; // ssids have a max length of 32
 		uint8_t encryptionType;
-		const char* ssid;
 	};
 
 	struct NetworkList {
-		int8_t size;
+		int8_t count;
 		Network* networks;
+	};
+
+	static constexpr const unsigned int MAX_PACKET_NETWORK_COUNT = (512 - sizeof(int8_t))/sizeof(Network);
+	struct NetworkPacket {
+		int8_t count;
+		Network networks[MAX_PACKET_NETWORK_COUNT];
 	};
 }
 
@@ -39,7 +45,9 @@ BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 // TODO: create proper UUID https://devzone.nordicsemi.com/guides/short-range-guides/b/bluetooth-low-energy/posts/ble-services-a-beginners-tutorial
 BLEService wifiScannerService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
 BLEByteCharacteristic wifiScannerScanState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
-BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::Network));
+BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::NetworkPacket));
+BLEByteCharacteristic wifiScannerPacketCount("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate);
+// BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::Network));
 
 BLEService wifiConfiguratorService("00000000-dabd-4a32-8e63-7631272ab6e3");
 BLEByteCharacteristic wifiConfigState("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate);
@@ -89,6 +97,7 @@ void startBle() {
 	BLE.setLocalName("Flourish Device");
 	BLE.setDeviceName("Flourish Device");
 
+	// TODO: services getting double registered on restart
 	BLE.addService(wifiScannerService);
 	BLE.addService(wifiConfiguratorService);
 	BLE.addService(batteryService);
@@ -167,6 +176,7 @@ void setup()
 	// setup characteristics
 	wifiScannerService.addCharacteristic(wifiScannerScanState);
 	wifiScannerService.addCharacteristic(wifiScannerAPList);
+	wifiScannerService.addCharacteristic(wifiScannerPacketCount);
 
 	wifiConfiguratorService.addCharacteristic(wifiConfigState);
 
@@ -216,16 +226,18 @@ FlourishWiFi::NetworkList getNetworks() {
 	Serial.println("Number of available networks: " + String(numSsid));
 
 	FlourishWiFi::Network* networks = new FlourishWiFi::Network[numSsid];
-	// Network* networks = (Network*) malloc(sizeof( Network ) * numSsid);
 	for (size_t i = 0; i < numSsid; i++)
 	{
 		networks[i] = {
 			WiFi.RSSI(i),
+			{},
 			WiFi.encryptionType(i),
-			WiFi.SSID(i)
 		};
 
-		Serial.println("Network " + String(i) + ": " + String(networks[i].ssid));
+		// copy ssid into network buffer
+		strncpy(networks[i].ssid, WiFi.SSID(i), 32);
+
+		Serial.println("Network " + String(i) + ": " + String( networks[i].ssid ));
 		Serial.println("Signal: " + String(networks[i].rssi) + " dBm");
 		Serial.println("Encryption: " + encryptionTypeMap[networks[i].encryptionType]);
 	}
@@ -250,20 +262,45 @@ void scanner() {
 					Serial.println("Starting WiFi scan");
 					startWifi();
 
-					FlourishWiFi::NetworkList networkInfo = getNetworks();
+					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNING);
 
+					FlourishWiFi::NetworkList networkInfo = getNetworks();
 					// restart ble and send values
 					startBle();
-					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
 
-		 			Serial.println("Found " + String(networkInfo.size) + " networks");
-					for (size_t i = 0; i < networkInfo.size; i++)
+		 			Serial.println("Found " + String(networkInfo.count) + " networks");
+					// FlourishWiFi::NetworkPacket packets[5];
+
+					// chunk networks into packets
+					FlourishWiFi::NetworkPacket packet = {0, {}};
+					for (size_t i = 0; i < networkInfo.count; i++)
 					{
-						char bytes[sizeof(networkInfo.networks[i])];
-						memcpy(bytes, &networkInfo.networks[i], sizeof(networkInfo.networks[i]));
-						Serial.println("Writing " + String(sizeof(bytes)) + " bytes");
-						wifiScannerAPList.writeValue(bytes, sizeof(bytes));
+						if (packet.count >= FlourishWiFi::MAX_PACKET_NETWORK_COUNT) {
+							// TODO: send multiple packets
+							Serial.println("Packet overflow, ignoring other networks");
+							break;
+						}
+
+						Serial.println("Copying network " + String(i));
+						// copy network into packet memory and increment count
+						packet.networks[i] = networkInfo.networks[i];
+						// memcpy(&packet.networks[i], &networkInfo.networks[i], sizeof(FlourishWiFi::Network));
+						packet.count++;
 					}
+
+					Serial.println("Converting packet to bytes");
+					Serial.println("Packet contains " + String(packet.count) + " networks");
+					char * buffer = reinterpret_cast<char*>(&packet);
+					for (size_t j = 0; j < sizeof(packet); j++)
+					{
+						Serial.print((uint8_t) buffer[j]);
+						Serial.print(", ");
+					}
+					Serial.println("");
+
+					wifiScannerAPList.writeValue(buffer, sizeof(buffer));
+					wifiScannerPacketCount.writeValue(networkInfo.count);
+					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
 
 					delete[] networkInfo.networks;
 					Serial.println("Scan complete");
