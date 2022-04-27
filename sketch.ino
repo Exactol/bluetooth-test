@@ -47,7 +47,6 @@ BLEService wifiScannerService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
 BLEByteCharacteristic wifiScannerScanState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
 BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::NetworkPacket));
 BLEByteCharacteristic wifiScannerPacketCount("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate);
-// BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::Network));
 
 BLEService wifiConfiguratorService("00000000-dabd-4a32-8e63-7631272ab6e3");
 BLEByteCharacteristic wifiConfigState("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate);
@@ -69,6 +68,7 @@ void startWifi() {
 	BLE.end();
 
 	Serial.println("Initializing WiFi");
+
 	// start WiFi
 	wiFiDrv.wifiDriverDeinit();
 	wiFiDrv.wifiDriverInit();
@@ -91,7 +91,6 @@ void startBle() {
 	// initialize BLE
 	if (!BLE.begin()) {
 		Serial.println("Failed to start BLE");
-
 		while (1);
 	}
 
@@ -101,36 +100,8 @@ void startBle() {
 
 	BLE.setAdvertisedService(wifiScannerService);
 
-	// // setup characteristics
-	// wifiScannerService.addCharacteristic(wifiScannerScanState);
-	// wifiScannerService.addCharacteristic(wifiScannerAPList);
-	// wifiScannerService.addCharacteristic(wifiScannerPacketCount);
-
-	// wifiConfiguratorService.addCharacteristic(wifiConfigState);
-
-	// batteryService.addCharacteristic(batteryPercentage);
-
-	// deviceInformationService.addCharacteristic(deviceManufacturerName);
-	// deviceInformationService.addCharacteristic(deviceModelNumber);
-	// deviceInformationService.addCharacteristic(deviceSerialNumber);
-	// deviceInformationService.addCharacteristic(deviceHardwareRevision);
-	// deviceInformationService.addCharacteristic(deviceFirmwareRevision);
-
-	// deviceManufacturerName.writeValue("Flourish");
-	// deviceModelNumber.writeValue(model);
-	// deviceSerialNumber.writeValue(serialNumber);
-	// deviceHardwareRevision.writeValue(hardwareRevision);
-	// deviceFirmwareRevision.writeValue(firmwareRevision);
-
-	// // setup event handlers
-	// BLE.setEventHandler(BLEConnected, onBLEConnected);
-	// BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
-
 	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
 
-
-
-	// TODO: services getting double registered on restart
 	BLE.addService(wifiScannerService);
 	BLE.addService(wifiConfiguratorService);
 	BLE.addService(batteryService);
@@ -204,8 +175,6 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	// BLE.setAdvertisedService(wifiScannerService);
-
 	// setup characteristics
 	wifiScannerService.addCharacteristic(wifiScannerScanState);
 	wifiScannerService.addCharacteristic(wifiScannerAPList);
@@ -227,11 +196,9 @@ void setup()
 	deviceHardwareRevision.writeValue(hardwareRevision);
 	deviceFirmwareRevision.writeValue(firmwareRevision);
 
-	// // setup event handlers
-	// BLE.setEventHandler(BLEConnected, onBLEConnected);
-	// BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
-
-	// BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
+	// setup event handlers
+	BLE.setEventHandler(BLEConnected, onBLEConnected);
+	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
 
 	startBle();
 
@@ -317,7 +284,6 @@ void scanner() {
 						Serial.println("Copying network " + String(i));
 						// copy network into packet memory and increment count
 						packet.networks[i] = networkInfo.networks[i];
-						// memcpy(&packet.networks[i], &networkInfo.networks[i], sizeof(FlourishWiFi::Network));
 						packet.count++;
 					}
 
@@ -325,14 +291,16 @@ void scanner() {
 					Serial.println("Packet contains " + String(packet.count) + " networks");
 
 					char * buffer = reinterpret_cast<char*>(&packet);
+					// print out buffer for debugging
 					for (size_t j = 0; j < sizeof(packet); j++)
 					{
 						Serial.print((uint8_t) buffer[j]);
 						Serial.print(", ");
 					}
 					Serial.println("");
+					Serial.println("size: " + String(sizeof(packet)));
 
-					wifiScannerAPList.writeValue(buffer, sizeof(buffer));
+					wifiScannerAPList.writeValue(buffer, sizeof(packet), true);
 					wifiScannerPacketCount.writeValue(networkInfo.count);
 					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
 
