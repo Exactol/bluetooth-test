@@ -65,7 +65,7 @@ void startWifi() {
 	// stop ble
 	Serial.println("Stopping BLE");
 	BLE.stopAdvertise();
-	BLE.stopScan();
+	BLE.disconnect();
 	BLE.end();
 
 	Serial.println("Initializing WiFi");
@@ -73,6 +73,8 @@ void startWifi() {
 	wiFiDrv.wifiDriverDeinit();
 	wiFiDrv.wifiDriverInit();
 	status = WL_IDLE_STATUS;
+	// gives driver time to startup
+	// TODO: is there a better way to do this
 	delay(100);
 	Serial.println("WiFi initialized");
 }
@@ -81,8 +83,8 @@ void startBle() {
 	wifiMode = false;
 
 	// end wifi
-	Serial.println("Stopping WiFi");
-	WiFi.end();
+	// Serial.println("Stopping WiFi");
+	// WiFi.end();
 
 	Serial.println("Initializing BLE");
 
@@ -96,6 +98,37 @@ void startBle() {
 	// TODO: user configurable name?
 	BLE.setLocalName("Flourish Device");
 	BLE.setDeviceName("Flourish Device");
+
+	BLE.setAdvertisedService(wifiScannerService);
+
+	// // setup characteristics
+	// wifiScannerService.addCharacteristic(wifiScannerScanState);
+	// wifiScannerService.addCharacteristic(wifiScannerAPList);
+	// wifiScannerService.addCharacteristic(wifiScannerPacketCount);
+
+	// wifiConfiguratorService.addCharacteristic(wifiConfigState);
+
+	// batteryService.addCharacteristic(batteryPercentage);
+
+	// deviceInformationService.addCharacteristic(deviceManufacturerName);
+	// deviceInformationService.addCharacteristic(deviceModelNumber);
+	// deviceInformationService.addCharacteristic(deviceSerialNumber);
+	// deviceInformationService.addCharacteristic(deviceHardwareRevision);
+	// deviceInformationService.addCharacteristic(deviceFirmwareRevision);
+
+	// deviceManufacturerName.writeValue("Flourish");
+	// deviceModelNumber.writeValue(model);
+	// deviceSerialNumber.writeValue(serialNumber);
+	// deviceHardwareRevision.writeValue(hardwareRevision);
+	// deviceFirmwareRevision.writeValue(firmwareRevision);
+
+	// // setup event handlers
+	// BLE.setEventHandler(BLEConnected, onBLEConnected);
+	// BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
+
+	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
+
+
 
 	// TODO: services getting double registered on restart
 	BLE.addService(wifiScannerService);
@@ -171,7 +204,7 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	BLE.setAdvertisedService(wifiScannerService);
+	// BLE.setAdvertisedService(wifiScannerService);
 
 	// setup characteristics
 	wifiScannerService.addCharacteristic(wifiScannerScanState);
@@ -194,11 +227,11 @@ void setup()
 	deviceHardwareRevision.writeValue(hardwareRevision);
 	deviceFirmwareRevision.writeValue(firmwareRevision);
 
-	// setup event handlers
-	BLE.setEventHandler(BLEConnected, onBLEConnected);
-	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
+	// // setup event handlers
+	// BLE.setEventHandler(BLEConnected, onBLEConnected);
+	// BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
 
-	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
+	// BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
 
 	startBle();
 
@@ -269,9 +302,9 @@ void scanner() {
 					startBle();
 
 		 			Serial.println("Found " + String(networkInfo.count) + " networks");
-					// FlourishWiFi::NetworkPacket packets[5];
 
 					// chunk networks into packets
+					// FlourishWiFi::NetworkPacket packets[5];
 					FlourishWiFi::NetworkPacket packet = {0, {}};
 					for (size_t i = 0; i < networkInfo.count; i++)
 					{
@@ -290,6 +323,7 @@ void scanner() {
 
 					Serial.println("Converting packet to bytes");
 					Serial.println("Packet contains " + String(packet.count) + " networks");
+
 					char * buffer = reinterpret_cast<char*>(&packet);
 					for (size_t j = 0; j < sizeof(packet); j++)
 					{
