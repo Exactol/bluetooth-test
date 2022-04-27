@@ -16,7 +16,6 @@ namespace FlourishWiFi {
 	struct Network {
 		int32_t rssi;
 		char ssid[32]; // ssids have a max length of 32
-		uint8_t encryptionType;
 	};
 
 	struct NetworkList {
@@ -30,6 +29,48 @@ namespace FlourishWiFi {
 		Network networks[MAX_PACKET_NETWORK_COUNT];
 	};
 }
+
+namespace WIFI_SCANNER_STATE {
+	enum {
+		IDLE = 1,
+		SCAN = 2,
+		SCANNING = 4,
+		SCANNED = 8,
+		ERROR = 16
+	};
+}
+
+namespace WIFI_SCANNER_COMMANDS {
+	enum {
+		SCAN = 2,
+	};
+}
+
+namespace WIFI_CONFIG_STATE {
+	enum {
+		IDLE = 1,
+		SAVE = 2,
+		SAVING = 4,
+		SAVED = 8,
+		JOIN = 16,
+		JOINING = 32,
+		JOINED = 64,
+		ERROR = 128
+	};
+}
+
+enum class FLOURISH_EXCEPTION {
+	NO_WIFI_SSID
+};
+
+// namespace FLOURISH_DEVICE_STATE {
+// 	enum {
+// 		IDLE = 1,
+// 		COMMISSIONING = 2,
+// 		COMMISSIONED = 4,
+// 		ERROR = 8
+// 	};
+// }
 
 BLEService batteryService("180F");
 BLEByteCharacteristic batteryPercentage("2A19", BLERead);
@@ -110,44 +151,6 @@ void startBle() {
 	Serial.println("BLE Initialized");
 }
 
-namespace WIFI_SCANNER_STATE {
-	enum {
-		IDLE = 1,
-		SCAN = 2,
-		SCANNING = 4,
-		SCANNED = 8,
-		ERROR = 16
-	};
-}
-
-namespace WIFI_SCANNER_COMMANDS {
-	enum {
-		SCAN = 2,
-	};
-}
-
-namespace WIFI_CONFIG_STATE {
-	enum {
-		IDLE = 1,
-		SAVE = 2,
-		SAVING = 4,
-		SAVED = 8,
-		JOIN = 16,
-		JOINING = 32,
-		JOINED = 64,
-		ERROR = 128
-	};
-}
-
-// namespace FLOURISH_DEVICE_STATE {
-// 	enum {
-// 		IDLE = 1,
-// 		COMMISSIONING = 2,
-// 		COMMISSIONED = 4,
-// 		ERROR = 8
-// 	};
-// }
-
 void onBLEConnected(BLEDevice central) {
 	Serial.print("Connected event, central: ");
 	Serial.println(central.address());
@@ -181,6 +184,8 @@ void setup()
 	wifiScannerService.addCharacteristic(wifiScannerPacketCount);
 
 	wifiConfiguratorService.addCharacteristic(wifiConfigState);
+	wifiConfiguratorService.addCharacteristic(wifiConfigSsid);
+	wifiConfiguratorService.addCharacteristic(wifiConfigPassword);
 
 	batteryService.addCharacteristic(batteryPercentage);
 
@@ -205,15 +210,6 @@ void setup()
 	Serial.println("Setup complete");
 }
 
-std::map<int, String> encryptionTypeMap = {
-	{ ENC_TYPE_WEP, "WEP" },
-	{ ENC_TYPE_TKIP, "WPA" },
-	{ ENC_TYPE_CCMP, "WPA2" },
-	{ ENC_TYPE_NONE, "None" },
-	{ ENC_TYPE_AUTO, "Auto" }
-};
-
-
 FlourishWiFi::NetworkList getNetworks() {
 	Serial.println("Scanning networks");
 	int8_t numSsid = WiFi.scanNetworks();
@@ -231,7 +227,6 @@ FlourishWiFi::NetworkList getNetworks() {
 		networks[i] = {
 			WiFi.RSSI(i),
 			{},
-			WiFi.encryptionType(i),
 		};
 
 		// copy ssid into network buffer
@@ -239,7 +234,6 @@ FlourishWiFi::NetworkList getNetworks() {
 
 		Serial.println("Network " + String(i) + ": " + String( networks[i].ssid ));
 		Serial.println("Signal: " + String(networks[i].rssi) + " dBm");
-		Serial.println("Encryption: " + encryptionTypeMap[networks[i].encryptionType]);
 	}
 
 	return FlourishWiFi::NetworkList {
@@ -256,7 +250,6 @@ void scanner() {
 			{
 				case WIFI_SCANNER_STATE::IDLE:
 					Serial.println("IDLE");
-					delay(1000);
 					break;
 				case WIFI_SCANNER_STATE::SCAN: {
 					Serial.println("Starting WiFi scan");
@@ -315,28 +308,56 @@ void scanner() {
 	// }
 }
 
-// void configurator() {
-// 	while (wifiConfigState.value() != WIFI_CONFIG_STATE::JOINED) {
-// 		if (wifiConfigState.written()) {
-// 			Serial.println("WiFi Config Written " + String(wifiConfigState.value()));
-// 			switch (wifiConfigState.value())
-// 			{
-// 				case WIFI_CONFIG_STATE::IDLE:
-// 					Serial.println("IDLE");
-// 					delay(1000);
-// 					break;
-// 				case WIFI_CONFIG_STATE::JOIN:
-// 					Serial.println("JOIN");
+void configurator() {
+	if (wifiConfigState.written()) {
+		Serial.println("WiFi Config Written " + String(wifiConfigState.value()));
+		switch (wifiConfigState.value())
+		{
+			case WIFI_CONFIG_STATE::IDLE:
+				Serial.println("IDLE");
+				break;
+			case WIFI_CONFIG_STATE::SAVE:
+				Serial.println("SAVE");
 
-// 					delay(1000);
-// 					break;
+				delay(1000);
+				break;
 
-// 				default:
-// 					break;
-// 			}
-// 		}
-// 	}
-// }
+			case WIFI_CONFIG_STATE::JOIN: {
+				Serial.println("JOIN");
+				wifiConfigState.writeValue(WIFI_CONFIG_STATE::JOINING);
+				// if (wifiConfigSsid.value() == NULL) {
+				// 	// TODO: raise error
+				// 	int a = 3;
+				// }
+				Serial.println("Joining ");
+				Serial.println(wifiConfigSsid.value());
+
+				startWifi();
+
+				Serial.println("Attempting to join");
+				WiFi.setTimeout(10 * 1000);
+				status = WiFi.begin(wifiConfigSsid.value().c_str(), wifiConfigPassword.value().c_str());
+				int reasonCode = WiFi.reasonCode();
+				Serial.println("Status: " + String(status));
+				Serial.println("reason: " + String(reasonCode)); // https://community.cisco.com/t5/wireless-mobility-documents/802-11-association-status-802-11-deauth-reason-codes/ta-p/3148055
+
+				switch (status) {
+					case WL_CONNECT_FAILED:
+						Serial.println("Failed to join");
+				}
+				delay(5000);
+
+				startBle();
+
+				// Serial.println(wifiConfigPassword);
+				// if wifiConfigSsid
+				break;
+			}
+			default:
+				break;
+		}
+	}
+}
 
 void loop()
 {
@@ -347,23 +368,7 @@ void loop()
 	if (central) {
 		while (central.connected()) {
 			scanner();
-			// if (wifiScannerScanState.written()) {
-			// 	Serial.println("Written" + String(wifiScannerScanState.value()));
-			// 	switch (wifiScannerScanState.value())
-			// 	{
-			// 		case WIFI_CONFIG_STATE::IDLE:
-			// 			Serial.println("IDLE");
-			// 			delay(1000);
-			// 			break;
-			// 		case WIFI_CONFIG_STATE::SAVE:
-			// 			Serial.println("SAVE");
-			// 			delay(1000);
-			// 			break;
-
-			// 		default:
-			// 			break;
-			// 	}
-			// }
+			configurator();
 		}
 	}
 
