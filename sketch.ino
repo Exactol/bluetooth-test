@@ -1,6 +1,6 @@
 #include <WiFiNINA.h>
 #include <ArduinoBLE.h>
-#include <map>
+#include <vector>
 #include "utility/wifi_drv.h"
 
 const String model = "Flourish Device";
@@ -12,23 +12,16 @@ const int RED_LED = 2;
 const int GREEN_LED = 3;
 const int BLUE_LED = 4;
 
-namespace FlourishWiFi {
-	struct Network {
-		int32_t rssi;
-		char ssid[32]; // ssids have a max length of 32
-	};
+struct Network {
+	int32_t rssi;
+	char ssid[32]; // ssids have a max length of 32
+};
 
-	struct NetworkList {
-		int8_t count;
-		Network* networks;
-	};
-
-	static constexpr const unsigned int MAX_PACKET_NETWORK_COUNT = (512 - sizeof(int8_t))/sizeof(Network);
-	struct NetworkPacket {
-		int8_t count;
-		Network networks[MAX_PACKET_NETWORK_COUNT];
-	};
-}
+static constexpr unsigned int MAX_PACKET_NETWORK_COUNT = (512 - sizeof(int8_t))/sizeof(Network);
+struct NetworkPacket {
+	int8_t count;
+	Network networks[MAX_PACKET_NETWORK_COUNT];
+};
 
 namespace WIFI_SCANNER_STATE {
 	enum {
@@ -86,13 +79,14 @@ BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 // TODO: create proper UUID https://devzone.nordicsemi.com/guides/short-range-guides/b/bluetooth-low-energy/posts/ble-services-a-beginners-tutorial
 BLEService wifiScannerService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
 BLEByteCharacteristic wifiScannerScanState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
-BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(FlourishWiFi::NetworkPacket));
-BLEByteCharacteristic wifiScannerPacketCount("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate);
+BLEStringCharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, 512);
+// BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(NetworkPacket));
+// BLEByteCharacteristic wifiScannerPacketCount("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate);
 
 BLEService wifiConfiguratorService("00000000-dabd-4a32-8e63-7631272ab6e3");
 BLEByteCharacteristic wifiConfigState("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate);
 BLEStringCharacteristic wifiConfigSsid("00000002-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 32);
-BLEStringCharacteristic wifiConfigPassword("00000003-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 16);
+BLEStringCharacteristic wifiConfigPassword("00000003-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 64);
 // BLEByteCharacteristic wifiConfigSecurity("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 16);
 // BLEByteCharacteristic wifiSSDCharacteristic("", BLEWrite);
 
@@ -181,7 +175,7 @@ void setup()
 	// setup characteristics
 	wifiScannerService.addCharacteristic(wifiScannerScanState);
 	wifiScannerService.addCharacteristic(wifiScannerAPList);
-	wifiScannerService.addCharacteristic(wifiScannerPacketCount);
+	// wifiScannerService.addCharacteristic(wifiScannerPacketCount);
 
 	wifiConfiguratorService.addCharacteristic(wifiConfigState);
 	wifiConfiguratorService.addCharacteristic(wifiConfigSsid);
@@ -210,7 +204,7 @@ void setup()
 	Serial.println("Setup complete");
 }
 
-FlourishWiFi::NetworkList getNetworks() {
+std::vector<Network> getNetworks() {
 	Serial.println("Scanning networks");
 	int8_t numSsid = WiFi.scanNetworks();
 
@@ -221,7 +215,7 @@ FlourishWiFi::NetworkList getNetworks() {
 
 	Serial.println("Number of available networks: " + String(numSsid));
 
-	FlourishWiFi::Network* networks = new FlourishWiFi::Network[numSsid];
+	std::vector<Network> networks(numSsid);
 	for (size_t i = 0; i < numSsid; i++)
 	{
 		networks[i] = {
@@ -236,10 +230,7 @@ FlourishWiFi::NetworkList getNetworks() {
 		Serial.println("Signal: " + String(networks[i].rssi) + " dBm");
 	}
 
-	return FlourishWiFi::NetworkList {
-		numSsid,
-		networks
-	};
+	return networks;
 }
 
 void scanner() {
@@ -253,22 +244,27 @@ void scanner() {
 					break;
 				case WIFI_SCANNER_STATE::SCAN: {
 					Serial.println("Starting WiFi scan");
-					startWifi();
-
 					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNING);
 
-					FlourishWiFi::NetworkList networkInfo = getNetworks();
+					startWifi();
+
+					std::vector<Network> networks = getNetworks();
+
 					// restart ble and send values
 					startBle();
 
-		 			Serial.println("Found " + String(networkInfo.count) + " networks");
+		 			Serial.println("Found " + String(networks.size()) + " networks");
 
 					// chunk networks into packets
-					// FlourishWiFi::NetworkPacket packets[5];
-					FlourishWiFi::NetworkPacket packet = {0, {}};
-					for (size_t i = 0; i < networkInfo.count; i++)
+					// TODO: serialize in string instead
+					// 2 // netowrk count
+					// -85 Fios // rssi ssid
+					// -88 Bar // rssi ssid
+
+					NetworkPacket packet = {0, {}};
+					for (size_t i = 0; i < networks.size(); i++)
 					{
-						if (packet.count >= FlourishWiFi::MAX_PACKET_NETWORK_COUNT) {
+						if (packet.count >= MAX_PACKET_NETWORK_COUNT) {
 							// TODO: send multiple packets
 							Serial.println("Packet overflow, ignoring other networks");
 							break;
@@ -276,14 +272,14 @@ void scanner() {
 
 						Serial.println("Copying network " + String(i));
 						// copy network into packet memory and increment count
-						packet.networks[i] = networkInfo.networks[i];
+						packet.networks[i] = networks[i];
 						packet.count++;
 					}
 
 					Serial.println("Converting packet to bytes");
 					Serial.println("Packet contains " + String(packet.count) + " networks");
 
-					char * buffer = reinterpret_cast<char*>(&packet);
+					char* buffer = reinterpret_cast<char*>(&packet);
 					// print out buffer for debugging
 					for (size_t j = 0; j < sizeof(packet); j++)
 					{
@@ -294,10 +290,9 @@ void scanner() {
 					Serial.println("size: " + String(sizeof(packet)));
 
 					wifiScannerAPList.writeValue(buffer, sizeof(packet), true);
-					wifiScannerPacketCount.writeValue(networkInfo.count);
+					// wifiScannerPacketCount.writeValue(networks.size());
 					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
 
-					delete[] networkInfo.networks;
 					Serial.println("Scan complete");
 					break;
 				}
