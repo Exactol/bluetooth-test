@@ -69,8 +69,8 @@ struct WiFiInfo
 struct DeviceInfo
 {
 	uint32_t deviceId;
-	// TODO: device token
-	char* name;
+	String deviceToken;
+	String name;
 };
 
 BLEService batteryService("180F");
@@ -91,11 +91,12 @@ BLEStringCharacteristic wifiPassword("00000004-b50b-48b7-87e2-a6d52eb9cc9c", BLE
 
 BLEService commissioningService("00000000-1254-4046-81d7-676ba8909661");
 BLEIntCharacteristic commissioningState("00000001-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
-BLEIntCharacteristic commissioningDeviceID("00000002-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
+BLEUnsignedIntCharacteristic commissioningDeviceID("00000002-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
 BLEStringCharacteristic commissioningDeviceToken("00000003-1254-4046-81d7-676ba8909661", BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
-BLEStringCharacteristic commissioningDeviceName("00000003-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
+BLEStringCharacteristic commissioningDeviceName("00000004-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 
-// FlashStorage(flashStorage, PersistentInfo);
+FlashStorage(wifiStorage, WiFiInfo);
+FlashStorage(deviceStorage, DeviceInfo);
 
 bool wifiMode = false;
 int status = WL_IDLE_STATUS;
@@ -184,6 +185,12 @@ void setup()
 	commissioningService.addCharacteristic(commissioningDeviceID);
 	commissioningService.addCharacteristic(commissioningDeviceToken);
 	commissioningService.addCharacteristic(commissioningDeviceName);
+	commissioningDeviceName.setEventHandler(BLEWritten, [](BLEDevice device, BLECharacteristic characteristic) {
+		// update localname if name is updated
+		Serial.println("Name updated to " + commissioningDeviceName.value());
+		BLE.setLocalName(commissioningDeviceName.value().c_str());
+		BLE.advertise();
+	});
 
 	wifiService.addCharacteristic(wifiState);
 	wifiService.addCharacteristic(wifiAPList);
@@ -307,13 +314,33 @@ int joinNetwork() {
 	return 0;
 }
 
-int commission() {
+// TODO: TEST THIS
+int saveDeviceInformation() {
+	Serial.println("Saving information for device " + String(commissioningDeviceID.value()));
+
+	if (commissioningDeviceID.value() == -1) {
+		Serial.println("Failed to save information, device ID null");
+		return -1;
+	}
+
+	DeviceInfo info = {
+		commissioningDeviceID.value(),
+		commissioningDeviceToken.value(),
+		commissioningDeviceName.value(),
+	};
+
+	deviceStorage.write(info);
+	Serial.println("Device Information Saved");
+
+	return 0;
+}
+
+int commissionDevice() {
 	if (commissioningState.written()) {
 		switch (commissioningState.value())
 		{
 			case COMMISSIONING_STATE::SAVE:
-				Serial.println("SAVE");
-				delay(1000);
+				saveDeviceInformation();
 				break;
 
 			case COMMISSIONING_STATE::ERROR:
@@ -363,7 +390,7 @@ void loop()
 
 	if (central) {
 		while (central.connected()) {
-			commission();
+			commissionDevice();
 			commissionWifi();
 		}
 	}
