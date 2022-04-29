@@ -28,8 +28,19 @@ namespace FLOURISH_DEVICE_STATE {
 	};
 }
 
-// TODO: wifi related states should be seperate
 namespace COMMISSIONING_STATE {
+	enum {
+		IDLE = 1,
+
+		SAVE = 2,
+		SAVING = 4,
+		SAVED = 8,
+
+		ERROR = 1024
+	};
+}
+
+namespace WIFI_COMMISSIONING_STATE {
 	enum {
 		IDLE = 1,
 
@@ -49,12 +60,17 @@ namespace COMMISSIONING_STATE {
 	};
 }
 
-struct PersistentInfo
+struct WiFiInfo
 {
 	char* ssid;
 	char* password;
+};
+
+struct DeviceInfo
+{
 	uint32_t deviceId;
 	// TODO: device token
+	char* name;
 };
 
 BLEService batteryService("180F");
@@ -68,18 +84,18 @@ BLEStringCharacteristic deviceHardwareRevision("2A27", BLERead, 20);
 BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 
 BLEService wifiService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
-BLEStringCharacteristic wifiAPList("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
-BLEStringCharacteristic wifiSsid("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate, 32);
-BLEStringCharacteristic wifiPassword("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate, 64);
+BLEIntCharacteristic wifiState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
+BLEStringCharacteristic wifiAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
+BLEStringCharacteristic wifiSsid("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate, 32);
+BLEStringCharacteristic wifiPassword("00000004-b50b-48b7-87e2-a6d52eb9cc9c", BLEWrite | BLEIndicate, 64);
 
 BLEService commissioningService("00000000-1254-4046-81d7-676ba8909661");
 BLEIntCharacteristic commissioningState("00000001-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
 BLEIntCharacteristic commissioningDeviceID("00000002-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
-BLEStringCharacteristic commissioningDeviceToken("00000003-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
-
+BLEStringCharacteristic commissioningDeviceToken("00000003-1254-4046-81d7-676ba8909661", BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
+BLEStringCharacteristic commissioningDeviceName("00000003-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 
 // FlashStorage(flashStorage, PersistentInfo);
-
 
 bool wifiMode = false;
 int status = WL_IDLE_STATUS;
@@ -108,9 +124,9 @@ void startWifi() {
 void startBle() {
 	wifiMode = false;
 
-	// end wifi
-	// Serial.println("Stopping WiFi");
-	// WiFi.end();
+	// stop wifi
+	Serial.println("Stopping WiFi");
+	WiFi.end();
 
 	Serial.println("Initializing BLE");
 
@@ -141,6 +157,7 @@ void onBLEConnected(BLEDevice central) {
 	Serial.println(central.address());
 
 	commissioningState.writeValue(COMMISSIONING_STATE::IDLE);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::IDLE);
 
 	batteryPercentage.writeValue(80);
 	pinMode(BLUE_LED, HIGH);
@@ -166,7 +183,9 @@ void setup()
 	commissioningService.addCharacteristic(commissioningState);
 	commissioningService.addCharacteristic(commissioningDeviceID);
 	commissioningService.addCharacteristic(commissioningDeviceToken);
+	commissioningService.addCharacteristic(commissioningDeviceName);
 
+	wifiService.addCharacteristic(wifiState);
 	wifiService.addCharacteristic(wifiAPList);
 	wifiService.addCharacteristic(wifiSsid);
 	wifiService.addCharacteristic(wifiPassword);
@@ -180,6 +199,7 @@ void setup()
 	deviceInformationService.addCharacteristic(deviceFirmwareRevision);
 
 	commissioningState.writeValue(COMMISSIONING_STATE::IDLE);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::IDLE);
 
 	deviceManufacturerName.writeValue("Flourish");
 	deviceModelNumber.writeValue(model);
@@ -198,7 +218,7 @@ void setup()
 
 int scanNetworks() {
 	Serial.println("Starting WiFi scan");
-	commissioningState.writeValue(COMMISSIONING_STATE::SCANNING);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNING);
 
 	startWifi();
 
@@ -240,7 +260,7 @@ int scanNetworks() {
 	// restart ble and send available AP list
 	startBle();
 	wifiAPList.writeValue(output_str);
-	commissioningState.writeValue(COMMISSIONING_STATE::SCANNED);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNED);
 
 	Serial.println("Scan complete");
 	return 0;
@@ -248,7 +268,7 @@ int scanNetworks() {
 
 int joinNetwork() {
 	Serial.println("Joining Network: " + wifiSsid.value());
-	commissioningState.writeValue(COMMISSIONING_STATE::JOINING);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINING);
 
 	startWifi();
 
@@ -258,10 +278,10 @@ int joinNetwork() {
 	status = WiFi.begin(wifiSsid.value().c_str(), wifiPassword.value().c_str());
 
 	int reasonCode = WiFi.reasonCode();
-	Serial.println("Status: " + String(status));
-	Serial.println("reason: " + String(reasonCode)); // https://community.cisco.com/t5/wireless-mobility-documents/802-11-association-status-802-11-deauth-reason-codes/ta-p/3148055
-
 	if ( status != WL_CONNECTED ) {
+		Serial.println("Status: " + String(status));
+		Serial.println("reason: " + String(reasonCode)); // https://community.cisco.com/t5/wireless-mobility-documents/802-11-association-status-802-11-deauth-reason-codes/ta-p/3148055
+
 		switch (status) {
 			case WL_FAILURE:
 				Serial.println("WiFi failure");
@@ -282,25 +302,45 @@ int joinNetwork() {
 	}
 
 	startBle();
-	commissioningState.writeValue(COMMISSIONING_STATE::JOINED);
+	wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINED);
 
 	return 0;
 }
 
 int commission() {
-	if ( commissioningState.written() ) {
+	if (commissioningState.written()) {
 		switch (commissioningState.value())
 		{
-			case COMMISSIONING_STATE::SCAN:
-				scanNetworks();
-				break;
-
 			case COMMISSIONING_STATE::SAVE:
 				Serial.println("SAVE");
 				delay(1000);
 				break;
 
-			case COMMISSIONING_STATE::JOIN:
+			case COMMISSIONING_STATE::ERROR:
+				digitalWrite(RED_LED, HIGH);
+				break;
+
+			// idle
+			default:
+				break;
+		}
+	}
+}
+
+int commissionWifi() {
+	if (wifiState.written()) {
+		switch (wifiState.value())
+		{
+			case WIFI_COMMISSIONING_STATE::SCAN:
+				scanNetworks();
+				break;
+
+			case WIFI_COMMISSIONING_STATE::SAVE:
+				Serial.println("SAVE");
+				delay(1000);
+				break;
+
+			case WIFI_COMMISSIONING_STATE::JOIN:
 				joinNetwork();
 				break;
 
@@ -310,7 +350,6 @@ int commission() {
 
 			// idle
 			default:
-				delay(1000);
 				break;
 		}
 	}
@@ -325,6 +364,7 @@ void loop()
 	if (central) {
 		while (central.connected()) {
 			commission();
+			commissionWifi();
 		}
 	}
 
