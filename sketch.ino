@@ -1,6 +1,8 @@
 #include <WiFiNINA.h>
 #include <ArduinoBLE.h>
 #include <vector>
+#include <sstream>
+#include
 #include "utility/wifi_drv.h"
 
 const String model = "Flourish Device";
@@ -14,14 +16,10 @@ const int BLUE_LED = 4;
 
 struct Network {
 	int32_t rssi;
-	char ssid[32]; // ssids have a max length of 32
+	const char* ssid; // ssids have a max length of 32
 };
 
-static constexpr unsigned int MAX_PACKET_NETWORK_COUNT = (512 - sizeof(int8_t))/sizeof(Network);
-struct NetworkPacket {
-	int8_t count;
-	Network networks[MAX_PACKET_NETWORK_COUNT];
-};
+static const unsigned int BLE_MAX_CHARACTERISTIC_SIZE = 512;
 
 namespace WIFI_SCANNER_STATE {
 	enum {
@@ -79,16 +77,14 @@ BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 // TODO: create proper UUID https://devzone.nordicsemi.com/guides/short-range-guides/b/bluetooth-low-energy/posts/ble-services-a-beginners-tutorial
 BLEService wifiScannerService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
 BLEByteCharacteristic wifiScannerScanState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
-BLEStringCharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, 512);
-// BLECharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, sizeof(NetworkPacket));
-// BLEByteCharacteristic wifiScannerPacketCount("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate);
+BLEStringCharacteristic wifiScannerAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 
 BLEService wifiConfiguratorService("00000000-dabd-4a32-8e63-7631272ab6e3");
 BLEByteCharacteristic wifiConfigState("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate);
 BLEStringCharacteristic wifiConfigSsid("00000002-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 32);
 BLEStringCharacteristic wifiConfigPassword("00000003-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 64);
-// BLEByteCharacteristic wifiConfigSecurity("00000001-dabd-4a32-8e63-7631272ab6e3", BLERead | BLEWrite | BLEIndicate, 16);
-// BLEByteCharacteristic wifiSSDCharacteristic("", BLEWrite);
+
+// FlashStorage(flashStorage, DeviceCommissioning::PersistentInfo);
 
 bool wifiMode = false;
 int status = WL_IDLE_STATUS;
@@ -175,7 +171,6 @@ void setup()
 	// setup characteristics
 	wifiScannerService.addCharacteristic(wifiScannerScanState);
 	wifiScannerService.addCharacteristic(wifiScannerAPList);
-	// wifiScannerService.addCharacteristic(wifiScannerPacketCount);
 
 	wifiConfiguratorService.addCharacteristic(wifiConfigState);
 	wifiConfiguratorService.addCharacteristic(wifiConfigSsid);
@@ -220,11 +215,8 @@ std::vector<Network> getNetworks() {
 	{
 		networks[i] = {
 			WiFi.RSSI(i),
-			{},
+			WiFi.SSID(i)
 		};
-
-		// copy ssid into network buffer
-		strncpy(networks[i].ssid, WiFi.SSID(i), 32);
 
 		Serial.println("Network " + String(i) + ": " + String( networks[i].ssid ));
 		Serial.println("Signal: " + String(networks[i].rssi) + " dBm");
@@ -234,76 +226,59 @@ std::vector<Network> getNetworks() {
 }
 
 void scanner() {
-	// while (wifiScannerScanState.value() != WIFI_SCANNER_STATE::SCANNED) {
-		if (wifiScannerScanState.written()) {
-			Serial.println("Written" + String(wifiScannerScanState.value()));
-			switch (wifiScannerScanState.value())
-			{
-				case WIFI_SCANNER_STATE::IDLE:
-					Serial.println("IDLE");
-					break;
-				case WIFI_SCANNER_STATE::SCAN: {
-					Serial.println("Starting WiFi scan");
-					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNING);
+	if (wifiScannerScanState.written()) {
+		Serial.println("Written" + String(wifiScannerScanState.value()));
+		switch (wifiScannerScanState.value())
+		{
+			case WIFI_SCANNER_STATE::IDLE:
+				Serial.println("IDLE");
+				break;
+			case WIFI_SCANNER_STATE::SCAN: {
+				Serial.println("Starting WiFi scan");
+				wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNING);
 
-					startWifi();
+				startWifi();
 
-					std::vector<Network> networks = getNetworks();
+				std::vector<Network> networks = getNetworks();
 
-					// restart ble and send values
-					startBle();
+				// restart ble and send values
+				startBle();
 
-		 			Serial.println("Found " + String(networks.size()) + " networks");
+				Serial.println("Found " + String(networks.size()) + " networks");
 
-					// chunk networks into packets
-					// TODO: serialize in string instead
-					// 2 // netowrk count
-					// -85 Fios // rssi ssid
-					// -88 Bar // rssi ssid
+				// Serialize networks into string format
+				// 2 					// network count
+				// -85 Fios 	// rssi ssid
+				// -88 Bar 		// rssi ssid
+				std::ostringstream output_stream;
+				output_stream << networks.size();
+				for (size_t i = 0; i < networks.size(); i++)
+				{
+					String ssid(networks[i].ssid);
+					String rssi(networks[i].rssi);
 
-					NetworkPacket packet = {0, {}};
-					for (size_t i = 0; i < networks.size(); i++)
-					{
-						if (packet.count >= MAX_PACKET_NETWORK_COUNT) {
-							// TODO: send multiple packets
-							Serial.println("Packet overflow, ignoring other networks");
-							break;
-						}
-
-						Serial.println("Copying network " + String(i));
-						// copy network into packet memory and increment count
-						packet.networks[i] = networks[i];
-						packet.count++;
+					// string can't be larger than BLE max size (2 is size of space + newline)
+					if ((size_t) output_stream.tellp() + ssid.length() + rssi.length() + 2 > BLE_MAX_CHARACTERISTIC_SIZE) {
+						Serial.println("Too many networks, truncating");
+						break;
 					}
 
-					Serial.println("Converting packet to bytes");
-					Serial.println("Packet contains " + String(packet.count) + " networks");
-
-					char* buffer = reinterpret_cast<char*>(&packet);
-					// print out buffer for debugging
-					for (size_t j = 0; j < sizeof(packet); j++)
-					{
-						Serial.print((uint8_t) buffer[j]);
-						Serial.print(", ");
-					}
-					Serial.println("");
-					Serial.println("size: " + String(sizeof(packet)));
-
-					wifiScannerAPList.writeValue(buffer, sizeof(packet), true);
-					// wifiScannerPacketCount.writeValue(networks.size());
-					wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
-
-					Serial.println("Scan complete");
-					break;
+					output_stream << "\n" << rssi.c_str() << " " << ssid.c_str();
 				}
-				default:
-					break;
+
+				wifiScannerAPList.writeValue(String(output_stream.str().c_str()));
+				wifiScannerScanState.writeValue(WIFI_SCANNER_STATE::SCANNED);
+
+				Serial.println("Scan complete");
+				break;
 			}
+			default:
+				break;
 		}
-	// }
+	}
 }
 
-void configurator() {
+int configurator() {
 	if (wifiConfigState.written()) {
 		Serial.println("WiFi Config Written " + String(wifiConfigState.value()));
 		switch (wifiConfigState.value())
@@ -336,22 +311,37 @@ void configurator() {
 				Serial.println("Status: " + String(status));
 				Serial.println("reason: " + String(reasonCode)); // https://community.cisco.com/t5/wireless-mobility-documents/802-11-association-status-802-11-deauth-reason-codes/ta-p/3148055
 
-				switch (status) {
-					case WL_CONNECT_FAILED:
-						Serial.println("Failed to join");
+				if ( status != WL_CONNECTED ) {
+					switch (status) {
+						case WL_FAILURE:
+							Serial.println("WiFi failure");
+							break;
+						case WL_NO_SSID_AVAIL:
+							Serial.println("Failed to join, SSID not available");
+							break;
+						case WL_CONNECT_FAILED:
+							Serial.println("Failed to join");
+							break;
+						case WL_DISCONNECTED:
+							Serial.println("Failed to join, incorrect password");
+							break;
+					}
+
+		 			// TODO: handle error
+					return -1;
 				}
-				delay(5000);
 
 				startBle();
 
-				// Serial.println(wifiConfigPassword);
-				// if wifiConfigSsid
+				wifiConfigState.writeValue(WIFI_CONFIG_STATE::JOINED);
 				break;
 			}
 			default:
 				break;
 		}
 	}
+
+	return 0;
 }
 
 void loop()
