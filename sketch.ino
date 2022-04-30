@@ -19,7 +19,7 @@ enum class FLOURISH_EXCEPTION {
 	NO_WIFI_SSID
 };
 
-namespace FLOURISH_DEVICE_STATE {
+namespace DEVICE_STATE {
 	enum {
 		IDLE = 1,
 		COMMISSIONING = 2,
@@ -35,6 +35,8 @@ namespace COMMISSIONING_STATE {
 		SAVE = 2,
 		SAVING = 4,
 		SAVED = 8,
+
+		COMPLETE = 16,
 
 		ERROR = 1024
 	};
@@ -62,8 +64,8 @@ namespace WIFI_COMMISSIONING_STATE {
 
 struct WiFiInfo
 {
-	char* ssid;
-	char* password;
+	String ssid;
+	String password;
 };
 
 struct DeviceInfo
@@ -100,6 +102,7 @@ FlashStorage(deviceStorage, DeviceInfo);
 
 bool wifiMode = false;
 int status = WL_IDLE_STATUS;
+int device_state = DEVICE_STATE::IDLE;
 
 void startWifi() {
 	wifiMode = true;
@@ -170,15 +173,8 @@ void onBLEDisconnected(BLEDevice central) {
 	// TODO: cleanup
 }
 
-void setup()
-{
-	Serial.begin(9600);
-	while (!Serial);
-
-	// initialize pins
-	pinMode(RED_LED, OUTPUT);
-	pinMode(GREEN_LED, OUTPUT);
-	pinMode(BLUE_LED, OUTPUT);
+void setupCommissioning() {
+	Serial.println("Setting up commissioning");
 
 	// setup characteristics
 	commissioningService.addCharacteristic(commissioningState);
@@ -186,7 +182,7 @@ void setup()
 	commissioningService.addCharacteristic(commissioningDeviceToken);
 	commissioningService.addCharacteristic(commissioningDeviceName);
 	commissioningDeviceName.setEventHandler(BLEWritten, [](BLEDevice device, BLECharacteristic characteristic) {
-		// update localname if name is updated
+		// update advertised localname if name is updated
 		Serial.println("Name updated to " + commissioningDeviceName.value());
 		BLE.setLocalName(commissioningDeviceName.value().c_str());
 		BLE.advertise();
@@ -219,6 +215,34 @@ void setup()
 	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
 
 	startBle();
+
+	device_state = DEVICE_STATE::COMMISSIONING;
+	Serial.println("Commissioning setup complete");
+}
+
+void setup()
+{
+	Serial.begin(9600);
+	while (!Serial);
+
+	// initialize pins
+	pinMode(RED_LED, OUTPUT);
+	pinMode(GREEN_LED, OUTPUT);
+	pinMode(BLUE_LED, OUTPUT);
+
+	// check if device has been commissioned already
+	DeviceInfo deviceInfo = deviceStorage.read();
+	if (deviceInfo.deviceId == 0 && deviceInfo.name == NULL) {
+		setupCommissioning();
+	} else {
+		Serial.println("Device Information");
+		Serial.println("Name: " + deviceInfo.name);
+		Serial.println("ID: " + String( deviceInfo.deviceId ));
+
+		// read WiFi info from storage
+		WiFiInfo wifiInfo = wifiStorage.read();
+		Serial.println("WiFi SSID: " + wifiInfo.ssid);
+	}
 
 	Serial.println("Setup complete");
 }
@@ -343,6 +367,11 @@ int commissionDevice() {
 				saveDeviceInformation();
 				break;
 
+			case COMMISSIONING_STATE::COMPLETE:
+				// TODO: start wifi and stuff
+				device_state = DEVICE_STATE::COMMISSIONED;
+				break;
+
 			case COMMISSIONING_STATE::ERROR:
 				digitalWrite(RED_LED, HIGH);
 				break;
@@ -384,18 +413,27 @@ int commissionWifi() {
 
 void loop()
 {
-	BLEDevice central = BLE.central();
+	switch (device_state)
+	{
+		case DEVICE_STATE::COMMISSIONING: {
+			BLEDevice central = BLE.central();
 
-	digitalWrite(BLUE_LED, HIGH);
+			digitalWrite(BLUE_LED, HIGH);
 
-	if (central) {
-		while (central.connected()) {
-			commissionDevice();
-			commissionWifi();
+			if (central) {
+				while (central.connected()) {
+					commissionDevice();
+					commissionWifi();
+				}
+			}
+
+			delay(500);
+			digitalWrite(BLUE_LED, LOW);
+			delay(500);
+			break;
 		}
-	}
 
-	delay(500);
-	digitalWrite(BLUE_LED, LOW);
-	delay(500);
+		default:
+			break;
+	}
 }
