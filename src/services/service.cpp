@@ -1,5 +1,0 @@
-class Service {
-	void constructor() {
-
-	}
-}

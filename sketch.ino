@@ -4,19 +4,24 @@
 
 #include "utility/wifi_drv.h"
 
-#include "src/communication/wifi.h"
-#include "src/communication/ble.h"
+// #include "src/communication/wifi.h"
 #include "src/common.h"
-
-FlashStorage(deviceStorage, DeviceInfo);
+#include "src/communication/ble.h"
+// #include "src/services/wifi_service.h"
+// #include "src/services/flourish_service.h"
 
 int device_state = DEVICE_STATE::IDLE;
+
+// BatteryService batteryService;
 
 void setupCommissioning() {
 	Serial.println("Setting up commissioning");
 
 	initializeServices();
+
+	// batteryService.initialize();
 	device_state = DEVICE_STATE::COMMISSIONING;
+	startBle();
 
 	Serial.println("Commissioning setup complete");
 }
@@ -31,65 +36,23 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	// check if device has been commissioned already
-	DeviceInfo deviceInfo = deviceStorage.read();
-	if (deviceInfo.deviceId == 0 && deviceInfo.name == NULL) {
-		setupCommissioning();
-	} else {
-		Serial.println("Device Information");
-		Serial.println("Name: " + deviceInfo.name);
-		Serial.println("ID: " + String( deviceInfo.deviceId ));
+	setupCommissioning();
 
-		// read WiFi info from storage
-		// WiFiInfo wifiInfo = wifiStorage.read();
-		// Serial.println("WiFi SSID: " + wifiInfo.ssid);
-	}
+	// check if device has been commissioned already
+	// DeviceInfo deviceInfo = deviceStorage.read();
+	// if (deviceInfo.deviceId == 0 && deviceInfo.name == NULL) {
+	// 	setupCommissioning();
+	// } else {
+	// 	Serial.println("Device Information");
+	// 	Serial.println("Name: " + deviceInfo.name);
+	// 	Serial.println("ID: " + String( deviceInfo.deviceId ));
+
+	// 	// read WiFi info from storage
+	// 	// WiFiInfo wifiInfo = wifiStorage.read();
+	// 	// Serial.println("WiFi SSID: " + wifiInfo.ssid);
+	// }
 
 	Serial.println("Setup complete");
-}
-
-int saveDeviceInformation() {
-	Serial.println("Saving information for device " + String(commissioningDeviceID.value()));
-
-	if (commissioningDeviceID.value() == -1) {
-		Serial.println("Failed to save information, device ID null");
-		return -1;
-	}
-
-	DeviceInfo info = {
-		commissioningDeviceID.value(),
-		commissioningDeviceToken.value(),
-		commissioningDeviceName.value(),
-	};
-
-	deviceStorage.write(info);
-	Serial.println("Device Information Saved");
-
-	return 0;
-}
-
-int commissionDevice() {
-	if (commissioningState.written()) {
-		switch (commissioningState.value())
-		{
-			case COMMISSIONING_STATE::SAVE:
-				saveDeviceInformation();
-				break;
-
-			case COMMISSIONING_STATE::COMPLETE:
-				// TODO: start wifi and stuff
-				device_state = DEVICE_STATE::COMMISSIONED;
-				break;
-
-			case COMMISSIONING_STATE::ERROR:
-				digitalWrite(RED_LED, HIGH);
-				break;
-
-			// idle
-			default:
-				break;
-		}
-	}
 }
 
 void loop()
@@ -103,8 +66,10 @@ void loop()
 
 			if (central) {
 				while (central.connected()) {
-					commissionDevice();
-					commissionWifi();
+					executeServices();
+					// commissionDevice();
+					// commissionWifi();
+
 				}
 			}
 
