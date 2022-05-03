@@ -2,28 +2,24 @@
 #include <ArduinoBLE.h>
 #include <FlashStorage.h>
 
-#include "utility/wifi_drv.h"
-
-// #include "src/communication/wifi.h"
 #include "src/common.h"
 #include "src/communication/ble.h"
-// #include "src/services/wifi_service.h"
-// #include "src/services/flourish_service.h"
 
 int device_state = DEVICE_STATE::IDLE;
-
-// BatteryService batteryService;
 
 void setupCommissioning() {
 	Serial.println("Setting up commissioning");
 
-	initializeServices();
-
-	// batteryService.initialize();
+	setupServices();
 	device_state = DEVICE_STATE::COMMISSIONING;
 	startBle();
 
 	Serial.println("Commissioning setup complete");
+}
+
+void setupDevice() {
+	Serial.println("All services initialized, setting up device");
+	device_state = DEVICE_STATE::COMMISSIONED;
 }
 
 void setup()
@@ -36,21 +32,13 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	setupCommissioning();
+	initializeServices();
 
-	// check if device has been commissioned already
-	// DeviceInfo deviceInfo = deviceStorage.read();
-	// if (deviceInfo.deviceId == 0 && deviceInfo.name == NULL) {
-	// 	setupCommissioning();
-	// } else {
-	// 	Serial.println("Device Information");
-	// 	Serial.println("Name: " + deviceInfo.name);
-	// 	Serial.println("ID: " + String( deviceInfo.deviceId ));
-
-	// 	// read WiFi info from storage
-	// 	// WiFiInfo wifiInfo = wifiStorage.read();
-	// 	// Serial.println("WiFi SSID: " + wifiInfo.ssid);
-	// }
+	if (servicesInitialized()) {
+		setupDevice();
+	} else {
+		setupCommissioning();
+	}
 
 	Serial.println("Setup complete");
 }
@@ -67,9 +55,6 @@ void loop()
 			if (central) {
 				while (central.connected()) {
 					executeServices();
-					// commissionDevice();
-					// commissionWifi();
-
 				}
 			}
 
@@ -78,7 +63,10 @@ void loop()
 			delay(500);
 			break;
 		}
-
+		case DEVICE_STATE::COMMISSIONED:
+			Serial.println("Commisioned loop");
+			delay(2000);
+			break;
 		default:
 			break;
 	}

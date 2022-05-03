@@ -1,9 +1,6 @@
 #pragma once
 #include <ArduinoBLE.h>
-
-extern BLEService wifiService;
-extern BLEIntCharacteristic wifiState;
-
+#include "base_service.h"
 namespace WIFI_COMMISSIONING_STATE {
 	enum {
 		IDLE = 1,
@@ -24,14 +21,30 @@ namespace WIFI_COMMISSIONING_STATE {
 	};
 }
 
-struct WiFiInfo
+struct Network
 {
 	String ssid;
 	String password;
 };
 
-void initializeWifiServices();
+class WiFiService : public BaseService {
+	public:
+		void registerService() override;
+		void registerAttributes() override;
 
-int commissionWifi();
+		int execute() override;
 
-void registerWifiServices();
+		int initialize() override;
+		bool isInitialized() override;
+
+		// void onBLEConnected() override;
+		// void onBLEDisconnected() override;
+
+		WiFiService() = default;
+
+	private:
+	 	Network network;
+		int scanNetworks();
+		int joinNetwork();
+		int saveNetwork();
+};

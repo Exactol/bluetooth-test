@@ -25,19 +25,6 @@ namespace DEVICE_STATE {
 	};
 }
 
-namespace COMMISSIONING_STATE {
-	enum {
-		IDLE = 1,
-
-		SAVE = 2,
-		SAVING = 4,
-		SAVED = 8,
-
-		COMPLETE = 16,
-
-		ERROR = 1024
-	};
-}
 
 struct DeviceInfo
 {

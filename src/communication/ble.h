@@ -1,5 +1,9 @@
 #pragma once
 
 void startBle();
-void initializeServices();
+
+void setupServices();
 void executeServices();
+
+void initializeServices();
+bool servicesInitialized();
