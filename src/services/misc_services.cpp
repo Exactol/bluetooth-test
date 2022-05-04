@@ -26,7 +26,6 @@ BLEStringCharacteristic deviceModelNumber("2A24", BLERead, 20);
 BLEStringCharacteristic deviceSerialNumber("2A25", BLERead, 20);
 BLEStringCharacteristic deviceHardwareRevision("2A27", BLERead, 20);
 BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
-// BLEStringCharacteristic deviceFirmwareRevision("2A26", BLERead, 20);
 
 void DeviceInformationService::registerService() {
 	Serial.println("Registering Device Information Service");

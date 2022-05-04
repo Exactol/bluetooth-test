@@ -5,7 +5,7 @@
 #include "commissioning_service.h"
 
 BLEService commissioningService("00000000-1254-4046-81d7-676ba8909661");
-BLEIntCharacteristic commissioningState("00000001-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
+BLEUnsignedShortCharacteristic commissioningState("00000001-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
 BLEUnsignedIntCharacteristic commissioningDeviceID("00000002-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate);
 BLEStringCharacteristic commissioningDeviceToken("00000003-1254-4046-81d7-676ba8909661", BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 BLEStringCharacteristic commissioningDeviceName("00000004-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
@@ -84,29 +84,33 @@ bool CommissioningService::isInitialized() {
 }
 
 int CommissioningService::execute() {
-	if (commissioningState.written()) {
-		switch (commissioningState.value())
-		{
-			case COMMISSIONING_STATE::SAVE:
-				commissioningState.writeValue(COMMISSIONING_STATE::SAVING);
-				if (!saveDeviceInformation()) {
-					commissioningState.writeValue(COMMISSIONING_STATE::ERROR);
-				}
-				commissioningState.writeValue(COMMISSIONING_STATE::SAVED);
-				break;
-
-			case COMMISSIONING_STATE::COMPLETE:
-				// TODO: start wifi and stuff
-				// device_state = DEVICE_STATE::COMMISSIONED;
-				break;
-
-			case COMMISSIONING_STATE::ERROR:
-				digitalWrite(RED_LED, HIGH);
-				break;
-
-			// idle
-			default:
-				break;
-		}
+	if (!commissioningState.written()) {
+		return 0;
 	}
+
+	switch (commissioningState.value())
+	{
+		case COMMISSIONING_STATE::SAVE:
+			commissioningState.writeValue(COMMISSIONING_STATE::SAVING);
+			if (!saveDeviceInformation()) {
+				commissioningState.writeValue(COMMISSIONING_STATE::ERROR);
+			}
+			commissioningState.writeValue(COMMISSIONING_STATE::SAVED);
+			break;
+
+		case COMMISSIONING_STATE::COMPLETE:
+			// TODO: start wifi and stuff
+			// device_state = DEVICE_STATE::COMMISSIONED;
+			break;
+
+		case COMMISSIONING_STATE::ERROR:
+			digitalWrite(RED_LED, HIGH);
+			break;
+
+		// idle
+		default:
+			break;
+	}
+
+	return 0;
 }

@@ -9,7 +9,7 @@
 #include "../communication/wifi.h"
 
 BLEService wifiService("00000000-b50b-48b7-87e2-a6d52eb9cc9c");
-BLEIntCharacteristic wifiState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
+BLEUnsignedShortCharacteristic wifiState("00000001-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate);
 BLEStringCharacteristic wifiAPList("00000002-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 BLEStringCharacteristic wifiSsid("00000003-b50b-48b7-87e2-a6d52eb9cc9c", BLERead | BLEWrite | BLEIndicate, 32);
 BLEStringCharacteristic wifiPassword("00000004-b50b-48b7-87e2-a6d52eb9cc9c", BLEWrite | BLEIndicate, 64);
@@ -148,41 +148,44 @@ bool WiFiService::isInitialized() {
 }
 
 int WiFiService::execute() {
-	if (wifiState.written()) {
-		switch (wifiState.value())
-		{
-			case WIFI_COMMISSIONING_STATE::SCAN:
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNING);
-				if (!scanNetworks()) {
-					wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
-				}
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNED);
-				break;
-
-			case WIFI_COMMISSIONING_STATE::SAVE:
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::SAVING);
-				if (!saveNetwork()) {
-					wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
-				}
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::SAVED);
-				break;
-
-			case WIFI_COMMISSIONING_STATE::JOIN:
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINING);
-				if (!joinNetwork()) {
-					wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
-				}
-				wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINED);
-				break;
-
-			case WIFI_COMMISSIONING_STATE::ERROR:
-				digitalWrite(RED_LED, HIGH);
-				break;
-
-			// idle
-			default:
-				break;
-		}
+	if (!wifiState.written()) {
+		return 0;
 	}
 
+	switch (wifiState.value())
+	{
+		case WIFI_COMMISSIONING_STATE::SCAN:
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNING);
+			if (!scanNetworks()) {
+				wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
+			}
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::SCANNED);
+			break;
+
+		case WIFI_COMMISSIONING_STATE::SAVE:
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::SAVING);
+			if (!saveNetwork()) {
+				wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
+			}
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::SAVED);
+			break;
+
+		case WIFI_COMMISSIONING_STATE::JOIN:
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINING);
+			if (!joinNetwork()) {
+				wifiState.writeValue(WIFI_COMMISSIONING_STATE::ERROR);
+			}
+			wifiState.writeValue(WIFI_COMMISSIONING_STATE::JOINED);
+			break;
+
+		case WIFI_COMMISSIONING_STATE::ERROR:
+			digitalWrite(RED_LED, HIGH);
+			break;
+
+		// idle
+		default:
+			break;
+	}
+
+	return 0;
 }
