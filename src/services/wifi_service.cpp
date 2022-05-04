@@ -20,7 +20,7 @@ void WiFiService::registerService() {
 }
 
 void WiFiService::registerAttributes() {
-	Serial.println("Initializing WiFi Service");
+	Serial.println("Registering WiFi Service Attributes");
 	wifiService.addCharacteristic(wifiState);
 	wifiService.addCharacteristic(wifiAPList);
 	wifiService.addCharacteristic(wifiSsid);

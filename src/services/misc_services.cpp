@@ -12,7 +12,7 @@ void BatteryService::registerService() {
 }
 
 void BatteryService::registerAttributes() {
-	Serial.println("Initializing Battery Service");
+	Serial.println("Registering Battery Service Attributes");
 	batteryService.addCharacteristic(batteryPercentage);
 	// TODO: actual battery readings
 	batteryPercentage.writeValue(80);
@@ -34,7 +34,7 @@ void DeviceInformationService::registerService() {
 }
 
 void DeviceInformationService::registerAttributes() {
-	Serial.println("Initializing Device Information Service");
+	Serial.println("Registering Device Information Service Attributes");
 	deviceInformationService.addCharacteristic(deviceManufacturerName);
 	deviceInformationService.addCharacteristic(deviceModelNumber);
 	deviceInformationService.addCharacteristic(deviceSerialNumber);

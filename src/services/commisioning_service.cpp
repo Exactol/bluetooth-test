@@ -22,7 +22,7 @@ void CommissioningService::registerService() {
 }
 
 void CommissioningService::registerAttributes() {
-	Serial.println("Initializing Commisioning Service");
+	Serial.println("Registering Commisioning Service Attributes");
 	commissioningService.addCharacteristic(commissioningState);
 	commissioningService.addCharacteristic(commissioningDeviceID);
 	commissioningService.addCharacteristic(commissioningDeviceToken);
