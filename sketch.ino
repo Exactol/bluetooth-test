@@ -20,6 +20,8 @@ void setupCommissioning() {
 void setupDevice() {
 	Serial.println("All services initialized, setting up device");
 	device_state = DEVICE_STATE::COMMISSIONED;
+	digitalWrite(BLUE_LED, LOW);
+	digitalWrite(GREEN_LED, HIGH);
 }
 
 void setup()
