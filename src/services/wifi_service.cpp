@@ -144,7 +144,7 @@ int WiFiService::initialize() {
 }
 
 bool WiFiService::isInitialized() {
-	return network.ssid != NULL;
+	return network.ssid.length() > 0;
 }
 
 int WiFiService::execute() {

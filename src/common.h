@@ -24,11 +24,3 @@ namespace DEVICE_STATE {
 		ERROR = 8
 	};
 }
-
-
-struct DeviceInfo
-{
-	uint32_t deviceId;
-	String deviceToken;
-	String name;
-};

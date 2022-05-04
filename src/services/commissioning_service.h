@@ -1,6 +1,13 @@
 #pragma once
 #include "base_service.h"
 
+struct DeviceInfo
+{
+	uint32_t deviceId;
+	String deviceToken;
+	String name;
+};
+
 class CommissioningService : public BaseService {
 	public:
 		void registerService() override;
@@ -14,7 +21,7 @@ class CommissioningService : public BaseService {
 		// void onBLEConnected() override;
 		// void onBLEDisconnected() override;
 
-		CommissioningService(int type);
+		CommissioningService(int deviceType);
 
 	private:
 		int deviceType;

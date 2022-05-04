@@ -10,6 +10,7 @@
 #include "../services/commissioning_service.h"
 #include "../services/wifi_service.h"
 
+// TODO: vector not portable, switch to arrays
 std::vector<BaseService*> services = { new CommissioningService(COMMISSIONING_DEVICE_TYPE::SENSOR), new WiFiService(), new BatteryService(), new DeviceInformationService(), };
 
 void onBLEConnected(BLEDevice central) {

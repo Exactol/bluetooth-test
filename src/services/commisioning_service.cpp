@@ -11,8 +11,8 @@ BLEStringCharacteristic commissioningDeviceToken("00000003-1254-4046-81d7-676ba8
 BLEStringCharacteristic commissioningDeviceName("00000004-1254-4046-81d7-676ba8909661", BLERead | BLEWrite | BLEIndicate, BLE_MAX_CHARACTERISTIC_SIZE);
 BLEByteCharacteristic commissioningDeviceType("00000005-1254-4046-81d7-676ba8909661", BLERead | BLEIndicate);
 
-CommissioningService::CommissioningService(int type) {
-	deviceType = type;
+CommissioningService::CommissioningService(int deviceType) {
+	this->deviceType = deviceType;
 }
 
 void CommissioningService::registerService() {
@@ -79,8 +79,8 @@ int CommissioningService::initialize() {
 }
 
 bool CommissioningService::isInitialized() {
-	return deviceInfo.deviceId != 0 && deviceInfo.name != NULL;
 	// TODO: add token
+	return deviceInfo.deviceId != 0;
 }
 
 int CommissioningService::execute() {

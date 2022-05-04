@@ -65,7 +65,7 @@ void loop()
 		}
 		case DEVICE_STATE::COMMISSIONED:
 			Serial.println("Commisioned loop");
-			delay(2000);
+			delay(5000);
 			break;
 		default:
 			break;
