@@ -47,8 +47,8 @@ int WiFiService::scanNetworks() {
 	// -85 Fios 	// rssi ssid
 	// -88 Bar 		// rssi ssid
 	Serial.println("Sending networks");
-	String output_str;
-	output_str.reserve(BLE_MAX_CHARACTERISTIC_SIZE);
+	String outputStr;
+	outputStr.reserve(BLE_MAX_CHARACTERISTIC_SIZE);
 	for (size_t i = 0; i < numSsid; i++)
 	{
 		String ssid(WiFi.SSID(i));
@@ -58,18 +58,18 @@ int WiFiService::scanNetworks() {
 
 		// string can't be larger than BLE max size (2 is size of space + newline)
 		String newLine = "\n" + rssi + " " + ssid;
-		if (output_str.length() + newLine.length() > BLE_MAX_CHARACTERISTIC_SIZE) {
+		if (outputStr.length() + newLine.length() > BLE_MAX_CHARACTERISTIC_SIZE) {
 			Serial.println("Too many networks, truncating");
 			break;
 		}
 
-		output_str += newLine;
+		outputStr += newLine;
 	}
-	Serial.println("Output length: " + String(output_str.length()));
+	Serial.println("Output length: " + String(outputStr.length()));
 
 	// restart ble and send available AP list
 	startBle();
-	wifiAPList.writeValue(output_str);
+	wifiAPList.writeValue(outputStr);
 
 	Serial.println("Scan complete");
 	return 0;

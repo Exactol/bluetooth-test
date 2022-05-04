@@ -5,13 +5,13 @@
 #include "src/common.h"
 #include "src/communication/ble.h"
 
-int device_state = DEVICE_STATE::IDLE;
+int deviceState = DEVICE_STATE::IDLE;
 
 void setupCommissioning() {
 	Serial.println("Setting up commissioning");
 
 	setupServices();
-	device_state = DEVICE_STATE::COMMISSIONING;
+	deviceState = DEVICE_STATE::COMMISSIONING;
 	startBle();
 
 	Serial.println("Commissioning setup complete");
@@ -19,7 +19,7 @@ void setupCommissioning() {
 
 void setupDevice() {
 	Serial.println("All services initialized, setting up device");
-	device_state = DEVICE_STATE::COMMISSIONED;
+	deviceState = DEVICE_STATE::COMMISSIONED;
 	digitalWrite(BLUE_LED, LOW);
 	digitalWrite(GREEN_LED, HIGH);
 }
@@ -47,7 +47,7 @@ void setup()
 
 void loop()
 {
-	switch (device_state)
+	switch (deviceState)
 	{
 		case DEVICE_STATE::COMMISSIONING: {
 			BLEDevice central = BLE.central();
