@@ -1,11 +1,18 @@
 #include <WiFiNINA.h>
 #include <ArduinoBLE.h>
 #include <FlashStorage.h>
+#include <vector>
 
 #include "src/common.h"
 #include "src/communication/ble.h"
+#include "src/bluetooth_commissioner.h"
+#include "src/services/commissioning_service.h"
+#include "src/services/misc_services.h"
+#include "src/services/commissioning_service.h"
+#include "src/services/wifi_service.h"
 
 int deviceState = DEVICE_STATE::IDLE;
+auto commissioner = BluetoothCommissioner({new CommissioningService(COMMISSIONING_DEVICE_TYPE::SENSOR), new WiFiService(), new BatteryService(), new DeviceInformationService()});
 
 void setupCommissioning() {
 	Serial.println("Setting up commissioning");
@@ -15,6 +22,19 @@ void setupCommissioning() {
 	startBle();
 
 	Serial.println("Commissioning setup complete");
+}
+
+int completeCommissioning() {
+	Serial.println("Commissioning complete");
+
+	initializeServices();
+
+	if (servicesInitialized()) {
+		setupDevice();
+		return 0;
+	}
+
+	return 1;
 }
 
 void setupDevice() {
@@ -34,9 +54,9 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	initializeServices();
+	commissioner.initialize();
 
-	if (servicesInitialized()) {
+	if (commissioner.isInitialized()) {
 		setupDevice();
 	} else {
 		setupCommissioning();
@@ -56,7 +76,7 @@ void loop()
 
 			if (central) {
 				while (central.connected()) {
-					executeServices();
+					commissioner.execute();
 				}
 			}
 
