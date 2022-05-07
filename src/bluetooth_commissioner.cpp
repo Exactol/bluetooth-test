@@ -4,37 +4,26 @@
 
 #include "common.h"
 #include "bluetooth_commissioner.h"
+#include "communication/ble.h"
 
-// BLEDeviceEventHandler onBLEConnected(BluetoothCommissioner &commissioner) {
-// 	// void onConnected(BLEDevice central) {
-// 	// 	Serial.print("Connected event, central: ");
-// 	// 	Serial.println(central.address());
+void onBLEConnected(BLEDevice central) {
+	Serial.print("Connected event, central: ");
+	Serial.println(central.address());
 
-// 	// 	for (auto service : commissioner->)
-// 	// 		service->onBLEConnected();
+	for (auto service : commissioner.getServices())
+		service->onBLEConnected();
 
-// 	// 	pinMode(BLUE_LED, HIGH);
-// 	// }
+	pinMode(BLUE_LED, HIGH);
+}
 
-// 	return [commissioner](BLEDevice central) {
-// 		Serial.print("Connected event, central: ");
-// 		Serial.println(central.address());
+void onBLEDisconnected(BLEDevice central) {
+		Serial.print("Disconnected event, central: ");
+		Serial.println(central.address());
+		// TODO: cleanup
 
-// 		for (auto service : commissioner.services)
-// 			service->onBLEConnected();
-
-// 		pinMode(BLUE_LED, HIGH);
-// 	};
-// }
-// void onBLEConnected(BLEDevice central) {
-// 	Serial.print("Connected event, central: ");
-// 	Serial.println(central.address());
-
-// 	for (auto service : services)
-// 		service->onBLEConnected();
-
-// 	pinMode(BLUE_LED, HIGH);
-// }
+		for (auto service : commissioner.getServices())
+			service->onBLEDisconnected();
+}
 
 void BluetoothCommissioner::setupServices() {
 	// setup characteristics
@@ -42,29 +31,37 @@ void BluetoothCommissioner::setupServices() {
 		service->registerAttributes();
 
 	// setup event handlers
-	// BLE.setEventHandler(BLEConnected, [=](BLEDevice central) {
-	// 	Serial.print("Connected event, central: ");
-	// 	Serial.println(central.address());
-
-	// 	for (auto service : this->services)
-	// 		service->onBLEConnected();
-
-	// 	pinMode(BLUE_LED, HIGH);
-	// });
-
-	// BLE.setEventHandler(BLEDisconnected, [&](BLEDevice central) {
-	// 	Serial.print("Disconnected event, central: ");
-	// 	Serial.println(central.address());
-	// 	// TODO: cleanup
-
-	// 	for (auto service : services)
-	// 		service->onBLEDisconnected();
-	// });
+	BLE.setEventHandler(BLEConnected, onBLEConnected);
+	BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
 }
 
 void BluetoothCommissioner::registerServices() {
 	for (auto service : services)
 		service->registerService();
+}
+
+void BluetoothCommissioner::startCommissioning() {
+	Serial.println("Setting up commissioning");
+
+	this->setupServices();
+	deviceState = DEVICE_STATE::COMMISSIONING;
+	// start BLE will register the services
+	startBle();
+
+	Serial.println("Commissioning setup complete");
+}
+
+int BluetoothCommissioner::completeCommissioning() {
+	Serial.println("Commissioning complete");
+
+	this->initialize();
+
+	if (this->isInitialized()) {
+		setupDevice();
+		return 0;
+	}
+
+	return 1;
 }
 
 int BluetoothCommissioner::execute() {

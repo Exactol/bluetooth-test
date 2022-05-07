@@ -23,7 +23,7 @@ void startBle() {
 	BLE.setDeviceName("Flourish Device");
 	BLE.setAppearance(0x0540); // set appearance to Generic Sensor (from BLE appearance values)
 
-	registerBleServices();
+	commissioner.registerServices();
 
 	BLE.advertise();
 	Serial.println("BLE Initialized");

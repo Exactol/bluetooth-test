@@ -11,38 +11,7 @@
 #include "src/services/commissioning_service.h"
 #include "src/services/wifi_service.h"
 
-int deviceState = DEVICE_STATE::IDLE;
-auto commissioner = BluetoothCommissioner({new CommissioningService(COMMISSIONING_DEVICE_TYPE::SENSOR), new WiFiService(), new BatteryService(), new DeviceInformationService()});
-
-void setupCommissioning() {
-	Serial.println("Setting up commissioning");
-
-	setupServices();
-	deviceState = DEVICE_STATE::COMMISSIONING;
-	startBle();
-
-	Serial.println("Commissioning setup complete");
-}
-
-int completeCommissioning() {
-	Serial.println("Commissioning complete");
-
-	initializeServices();
-
-	if (servicesInitialized()) {
-		setupDevice();
-		return 0;
-	}
-
-	return 1;
-}
-
-void setupDevice() {
-	Serial.println("All services initialized, setting up device");
-	deviceState = DEVICE_STATE::COMMISSIONED;
-	digitalWrite(BLUE_LED, LOW);
-	digitalWrite(GREEN_LED, HIGH);
-}
+BluetoothCommissioner commissioner = BluetoothCommissioner({new CommissioningService(COMMISSIONING_DEVICE_TYPE::SENSOR), new WiFiService(), new BatteryService(), new DeviceInformationService()});
 
 void setup()
 {
@@ -59,7 +28,7 @@ void setup()
 	if (commissioner.isInitialized()) {
 		setupDevice();
 	} else {
-		setupCommissioning();
+		commissioner.startCommissioning();
 	}
 
 	Serial.println("Setup complete");

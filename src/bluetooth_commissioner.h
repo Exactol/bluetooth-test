@@ -4,6 +4,9 @@
 
 class BluetoothCommissioner {
 	public:
+		void startCommissioning();
+		int completeCommissioning();
+
 		void setupServices();
 		void registerServices();
 
@@ -12,8 +15,14 @@ class BluetoothCommissioner {
 
 		int execute();
 
-		BluetoothCommissioner(std::vector<BaseService*> services);
+		// TODO: unique pointers
+		BluetoothCommissioner(std::vector<BaseService*> services) {
+			this->services = services;
+		};
 
+		std::vector<BaseService*> const getServices() {
+			return services;
+		};
 	private:
 		std::vector<BaseService*> services;
 };

@@ -2,7 +2,7 @@
 #include <WiFiNINA.h>
 #include <ArduinoBLE.h>
 
-#include "../common.h"
+// #include "../common.h"
 #include "wifi.h"
 #include "ble.h"
 
