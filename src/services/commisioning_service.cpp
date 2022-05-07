@@ -94,13 +94,19 @@ int CommissioningService::execute() {
 			commissioningState.writeValue(COMMISSIONING_STATE::SAVING);
 			if (!saveDeviceInformation()) {
 				commissioningState.writeValue(COMMISSIONING_STATE::ERROR);
+				return 1;
 			}
 			commissioningState.writeValue(COMMISSIONING_STATE::SAVED);
 			break;
 
 		case COMMISSIONING_STATE::COMPLETE:
-			// TODO: start wifi and stuff
-			// device_state = DEVICE_STATE::COMMISSIONED;
+			commissioningState.writeValue(COMMISSIONING_STATE::COMPLETE);
+			commissioner.completeCommissioning();
+			// probably should handle error case
+			// if (!commissioner.completeCommissioning()) {
+				// commissioningState.writeValue(COMMISSIONING_STATE::ERROR);
+				// return 1;
+			// }
 			break;
 
 		case COMMISSIONING_STATE::ERROR:

@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "bluetooth_commissioner.h"
 
 static const unsigned int BLE_MAX_CHARACTERISTIC_SIZE = 512;
 
@@ -11,6 +12,9 @@ const String MODEL = "Flourish Device";
 const String SERIAL_NUMBER = "abcde";
 const String HARDWARE_REVISION = "0.1";
 const String FIRMWARE_REVISION = "0.1";
+
+extern BluetoothCommissioner commissioner;
+extern int deviceState;
 
 enum class FLOURISH_EXCEPTION {
 	NO_WIFI_SSID
@@ -24,3 +28,5 @@ namespace DEVICE_STATE {
 		ERROR = 8
 	};
 }
+
+void setupDevice();

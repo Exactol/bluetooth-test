@@ -1,28 +1,17 @@
 #include <WiFiNINA.h>
 #include <ArduinoBLE.h>
 #include <FlashStorage.h>
+#include <vector>
 
 #include "src/common.h"
 #include "src/communication/ble.h"
+#include "src/bluetooth_commissioner.h"
+#include "src/services/commissioning_service.h"
+#include "src/services/misc_services.h"
+#include "src/services/commissioning_service.h"
+#include "src/services/wifi_service.h"
 
-int deviceState = DEVICE_STATE::IDLE;
-
-void setupCommissioning() {
-	Serial.println("Setting up commissioning");
-
-	setupServices();
-	deviceState = DEVICE_STATE::COMMISSIONING;
-	startBle();
-
-	Serial.println("Commissioning setup complete");
-}
-
-void setupDevice() {
-	Serial.println("All services initialized, setting up device");
-	deviceState = DEVICE_STATE::COMMISSIONED;
-	digitalWrite(BLUE_LED, LOW);
-	digitalWrite(GREEN_LED, HIGH);
-}
+BluetoothCommissioner commissioner = BluetoothCommissioner({new CommissioningService(COMMISSIONING_DEVICE_TYPE::SENSOR), new WiFiService(), new BatteryService(), new DeviceInformationService()});
 
 void setup()
 {
@@ -34,12 +23,12 @@ void setup()
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(BLUE_LED, OUTPUT);
 
-	initializeServices();
+	commissioner.initialize();
 
-	if (servicesInitialized()) {
+	if (commissioner.isInitialized()) {
 		setupDevice();
 	} else {
-		setupCommissioning();
+		commissioner.startCommissioning();
 	}
 
 	Serial.println("Setup complete");
@@ -56,7 +45,7 @@ void loop()
 
 			if (central) {
 				while (central.connected()) {
-					executeServices();
+					commissioner.execute();
 				}
 			}
 
